@@ -1,9 +1,7 @@
 "use strict";
 
-
 /* ============================================================
-   DOCUSCAN
-   Escáner documental automático
+   DOCUSCAN - APP.JS COMPLETO
 ============================================================ */
 
 
@@ -13,34 +11,30 @@
 
 const CONFIG = {
 
-    // Tiempo que el documento debe permanecer estable.
+    // Tiempo que el documento debe permanecer quieto
+    // antes de realizar la captura automática.
     STABILITY_TIME: 3000,
 
-    // Intervalo de análisis de cámara.
+    // Cada cuánto se analiza la cámara.
     ANALYSIS_INTERVAL: 120,
 
-    // Área mínima del documento respecto al frame.
-    MIN_DOCUMENT_AREA_RATIO: 0.12,
+    // Área mínima que debe ocupar el documento.
+    MIN_DOCUMENT_AREA_RATIO: 0.10,
 
-    // Aproximación del contorno.
-    APPROX_EPSILON: 0.02,
+    // Tolerancia para aproximar los bordes.
+    APPROX_EPSILON: 0.025,
 
-    // Cuánto puede cambiar la posición antes de considerar
-    // que el documento se movió.
+    // Movimiento máximo permitido entre análisis.
     POSITION_TOLERANCE: 0.025,
 
-    // Cuánto puede cambiar el tamaño.
+    // Cambio máximo permitido en tamaño.
     SIZE_TOLERANCE: 0.035,
 
-    // Relación aproximada permitida.
-    MIN_ASPECT_RATIO: 0.55,
-    MAX_ASPECT_RATIO: 2.0,
-
-    // Resolución máxima de procesamiento.
+    // Resolución máxima utilizada para procesamiento.
     MAX_PROCESSING_WIDTH: 1800,
 
     // Calidad JPEG.
-    JPEG_QUALITY: 0.92
+    JPEG_QUALITY: 0.95
 };
 
 
@@ -62,6 +56,8 @@ const state = {
 
     processing: false,
 
+    analyzing: false,
+
     detectedDocument: null,
 
     previousDocument: null,
@@ -72,27 +68,24 @@ const state = {
 
     autoCaptureLocked: false,
 
+    lastAnalysisTime: 0,
+
     currentRawCanvas: null,
-
-    currentScanCanvas: null,
-
-    currentGrayCanvas: null,
 
     currentOriginalCanvas: null,
 
+    currentGrayCanvas: null,
+
+    currentScanCanvas: null,
+
     selectedFilter: "scan",
 
-    pages: [],
-
-    analyzing: false,
-
-    lastAnalysisTime: 0
-
+    pages: []
 };
 
 
 /* ============================================================
-   ELEMENTOS DOM
+   ELEMENTOS DEL DOM
 ============================================================ */
 
 const video = document.getElementById("video");
@@ -212,7 +205,7 @@ const btnGeneratePDF =
 
 
 /* ============================================================
-   INICIO
+   INICIALIZACIÓN
 ============================================================ */
 
 document.addEventListener(
@@ -248,45 +241,54 @@ function setupEvents() {
         manualCapture
     );
 
+
     btnCameraSwitch.addEventListener(
         "click",
         switchCamera
     );
+
 
     btnGallery.addEventListener(
         "click",
         showGallery
     );
 
+
     btnGalleryBottom.addEventListener(
         "click",
         showGallery
     );
+
 
     btnCloseGallery.addEventListener(
         "click",
         showCamera
     );
 
+
     btnCloseResult.addEventListener(
         "click",
         showCamera
     );
+
 
     btnRetake.addEventListener(
         "click",
         retakeDocument
     );
 
+
     btnAddPage.addEventListener(
         "click",
         addAnotherPage
     );
 
+
     btnSavePage.addEventListener(
         "click",
         saveCurrentPage
     );
+
 
     btnGeneratePDF.addEventListener(
         "click",
@@ -302,10 +304,9 @@ function setupEvents() {
                 "click",
                 () => {
 
-                    const filter =
-                        button.dataset.filter;
-
-                    selectFilter(filter);
+                    selectFilter(
+                        button.dataset.filter
+                    );
 
                 }
             );
@@ -321,7 +322,7 @@ function setupEvents() {
 
 
 /* ============================================================
-   OPEN CV
+   ESPERAR OPENCV
 ============================================================ */
 
 function waitForOpenCV() {
@@ -357,7 +358,7 @@ function waitForOpenCV() {
 
 
 /* ============================================================
-   CÁMARA
+   INICIAR CÁMARA
 ============================================================ */
 
 async function startCamera() {
@@ -370,7 +371,7 @@ async function startCamera() {
         ) {
 
             showToast(
-                "Tu navegador no permite utilizar la cámara.",
+                "Tu navegador no permite usar la cámara.",
                 "!"
             );
 
@@ -405,8 +406,9 @@ async function startCamera() {
 
 
         state.cameraStream =
-            await navigator.mediaDevices
-                .getUserMedia(constraints);
+            await navigator.mediaDevices.getUserMedia(
+                constraints
+            );
 
 
         video.srcObject =
@@ -416,7 +418,9 @@ async function startCamera() {
         await video.play();
 
 
-        state.cameraRunning = true;
+        state.cameraRunning =
+            true;
+
 
         await loadCameras();
 
@@ -449,7 +453,9 @@ async function loadCameras() {
     try {
 
         const devices =
-            await navigator.mediaDevices.enumerateDevices();
+            await navigator.mediaDevices
+                .enumerateDevices();
+
 
         state.cameras =
             devices.filter(
@@ -486,12 +492,14 @@ async function switchCamera() {
 
     state.currentCameraIndex++;
 
+
     if (
         state.currentCameraIndex >=
         state.cameras.length
     ) {
 
         state.currentCameraIndex = 0;
+
     }
 
 
@@ -510,6 +518,8 @@ async function switchCamera() {
             await navigator.mediaDevices
                 .getUserMedia({
 
+                    audio: false,
+
                     video: {
 
                         deviceId: {
@@ -524,9 +534,7 @@ async function switchCamera() {
                             ideal: 1080
                         }
 
-                    },
-
-                    audio: false
+                    }
 
                 });
 
@@ -534,11 +542,16 @@ async function switchCamera() {
         video.srcObject =
             state.cameraStream;
 
+
         await video.play();
 
-        state.cameraRunning = true;
+
+        state.cameraRunning =
+            true;
+
 
         resetStability();
+
 
         showToast(
             "Cámara cambiada",
@@ -569,17 +582,26 @@ function stopCamera() {
 
         state.cameraStream
             .getTracks()
-            .forEach(track => track.stop());
+            .forEach(track => {
 
-        state.cameraStream = null;
+                track.stop();
+
+            });
+
+
+        state.cameraStream =
+            null;
+
     }
 
-    state.cameraRunning = false;
+
+    state.cameraRunning =
+        false;
 }
 
 
 /* ============================================================
-   LOOP DE ANÁLISIS
+   LOOP DE DETECCIÓN
 ============================================================ */
 
 function startAnalysisLoop() {
@@ -598,23 +620,33 @@ function analysisLoop(timestamp) {
 
 
     if (
+
         !state.cameraRunning ||
+
         state.processing ||
-        resultSection.classList.contains("hidden") === false ||
-        gallerySection.classList.contains("hidden") === false
+
+        !resultSection.classList.contains("hidden") ||
+
+        !gallerySection.classList.contains("hidden")
+
     ) {
 
         return;
+
     }
 
 
     if (
+
         timestamp -
         state.lastAnalysisTime <
+
         CONFIG.ANALYSIS_INTERVAL
+
     ) {
 
         return;
+
     }
 
 
@@ -623,6 +655,7 @@ function analysisLoop(timestamp) {
 
 
     analyzeCameraFrame();
+
 }
 
 
@@ -633,22 +666,28 @@ function analysisLoop(timestamp) {
 function analyzeCameraFrame() {
 
     if (
+
         !state.opencvReady ||
+
         video.readyState <
         HTMLMediaElement.HAVE_CURRENT_DATA
+
     ) {
 
         return;
+
     }
 
 
     if (state.analyzing) {
 
         return;
+
     }
 
 
-    state.analyzing = true;
+    state.analyzing =
+        true;
 
 
     try {
@@ -660,50 +699,87 @@ function analyzeCameraFrame() {
             video.videoHeight;
 
 
-        if (!width || !height) {
+        if (
+
+            !width ||
+
+            !height
+
+        ) {
 
             return;
+
         }
 
 
+        /*
+        Reducimos la resolución únicamente
+        para detectar más rápido.
+        */
+
         const canvas =
-            document.createElement("canvas");
+            document.createElement(
+                "canvas"
+            );
+
+
+        const maxWidth =
+            1000;
+
 
         const scale =
             Math.min(
                 1,
-                1000 / width
+                maxWidth / width
             );
 
 
         canvas.width =
-            Math.round(width * scale);
+            Math.round(
+                width * scale
+            );
+
 
         canvas.height =
-            Math.round(height * scale);
+            Math.round(
+                height * scale
+            );
 
 
         const ctx =
-            canvas.getContext("2d", {
-                willReadFrequently: true
-            });
+            canvas.getContext(
+                "2d",
+                {
+                    willReadFrequently: true
+                }
+            );
 
 
         ctx.drawImage(
+
             video,
+
             0,
+
             0,
+
             canvas.width,
+
             canvas.height
+
         );
 
 
         const frame =
-            cv.imread(canvas);
+            cv.imread(
+                canvas
+            );
 
 
         const documentCorners =
-            detectDocument(frame);
+            detectDocument(
+                frame
+            );
 
 
         frame.delete();
@@ -713,16 +789,18 @@ function analyzeCameraFrame() {
 
             state.detectedDocument =
                 normalizeCorners(
+
                     documentCorners,
+
                     canvas.width,
+
                     canvas.height
+
                 );
 
 
             drawDetection(
-                state.detectedDocument,
-                canvas.width,
-                canvas.height
+                state.detectedDocument
             );
 
 
@@ -730,20 +808,22 @@ function analyzeCameraFrame() {
                 state.detectedDocument
             );
 
+
         } else {
 
             state.detectedDocument =
                 null;
 
-            drawDetection(
-                null,
-                canvas.width,
-                canvas.height
-            );
+
+            clearDetection();
+
 
             resetStability();
 
-            updateDetectionUI(false);
+
+            updateDetectionUI(
+                false
+            );
 
         }
 
@@ -757,13 +837,15 @@ function analyzeCameraFrame() {
 
     } finally {
 
-        state.analyzing = false;
+        state.analyzing =
+            false;
+
     }
 }
 
 
 /* ============================================================
-   DETECCIÓN DOCUMENTAL
+   DETECCIÓN MEJORADA DEL DOCUMENTO
 ============================================================ */
 
 function detectDocument(src) {
@@ -771,8 +853,11 @@ function detectDocument(src) {
     let gray = null;
     let blurred = null;
     let edges = null;
+    let threshold = null;
+    let combined = null;
     let contours = null;
     let hierarchy = null;
+    let kernel = null;
 
     try {
 
@@ -785,6 +870,12 @@ function detectDocument(src) {
         edges =
             new cv.Mat();
 
+        threshold =
+            new cv.Mat();
+
+        combined =
+            new cv.Mat();
+
         contours =
             new cv.MatVector();
 
@@ -792,65 +883,182 @@ function detectDocument(src) {
             new cv.Mat();
 
 
+        /*
+        ESCALA DE GRISES
+        */
+
         cv.cvtColor(
+
             src,
+
             gray,
+
             cv.COLOR_RGBA2GRAY
+
         );
 
 
-        cv.GaussianBlur(
+        /*
+        FILTRO BILATERAL
+
+        Reduce ruido manteniendo bordes.
+        */
+
+        cv.bilateralFilter(
+
             gray,
+
             blurred,
-            new cv.Size(5, 5),
-            0
+
+            7,
+
+            75,
+
+            75
+
         );
 
+
+        /*
+        DETECTAR BORDES
+        */
 
         cv.Canny(
+
             blurred,
+
             edges,
-            60,
-            180
+
+            40,
+
+            140
+
         );
 
 
-        const kernel =
-            cv.Mat.ones(
-                5,
-                5,
-                cv.CV_8U
+        /*
+        DETECTAR DIFERENCIAS DE ILUMINACIÓN
+        */
+
+        cv.adaptiveThreshold(
+
+            blurred,
+
+            threshold,
+
+            255,
+
+            cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+
+            cv.THRESH_BINARY,
+
+            31,
+
+            8
+
+        );
+
+
+        /*
+        COMBINAR LOS DOS MÉTODOS
+        */
+
+        cv.bitwise_or(
+
+            edges,
+
+            threshold,
+
+            combined
+
+        );
+
+
+        /*
+        CONECTAR BORDES INTERRUMPIDOS
+        */
+
+        kernel =
+            cv.getStructuringElement(
+
+                cv.MORPH_RECT,
+
+                new cv.Size(
+                    5,
+                    5
+                )
+
             );
 
 
-        cv.dilate(
-            edges,
-            edges,
+        cv.morphologyEx(
+
+            combined,
+
+            combined,
+
+            cv.MORPH_CLOSE,
+
             kernel
+
         );
 
+
+        cv.dilate(
+
+            combined,
+
+            combined,
+
+            kernel
+
+        );
+
+
+        /*
+        BUSCAR CONTORNOS
+        */
 
         cv.findContours(
-            edges,
+
+            combined,
+
             contours,
+
             hierarchy,
+
             cv.RETR_LIST,
+
             cv.CHAIN_APPROX_SIMPLE
+
         );
-
-
-        let bestContour = null;
-        let bestArea = 0;
 
 
         const imageArea =
-            src.cols * src.rows;
+            src.cols *
+            src.rows;
 
+
+        let bestPoints =
+            null;
+
+
+        let bestScore =
+            0;
+
+
+        /*
+        ANALIZAR TODOS LOS CONTORNOS
+        */
 
         for (
+
             let i = 0;
+
             i < contours.size();
+
             i++
+
         ) {
 
             const contour =
@@ -858,25 +1066,38 @@ function detectDocument(src) {
 
 
             const area =
-                cv.contourArea(contour);
+                cv.contourArea(
+                    contour
+                );
 
+
+            /*
+            Ignorar objetos pequeños.
+            */
 
             if (
+
                 area <
+
                 imageArea *
                 CONFIG.MIN_DOCUMENT_AREA_RATIO
+
             ) {
 
                 contour.delete();
 
                 continue;
+
             }
 
 
             const perimeter =
                 cv.arcLength(
+
                     contour,
+
                     true
+
                 );
 
 
@@ -884,18 +1105,36 @@ function detectDocument(src) {
                 new cv.Mat();
 
 
+            /*
+            Aproximar el contorno.
+            */
+
             cv.approxPolyDP(
+
                 contour,
+
                 approx,
-                CONFIG.APPROX_EPSILON *
-                perimeter,
+
+                perimeter *
+                CONFIG.APPROX_EPSILON,
+
                 true
+
             );
 
 
+            /*
+            Necesitamos 4 esquinas.
+            */
+
             if (
+
                 approx.rows === 4 &&
-                cv.isContourConvex(approx)
+
+                cv.isContourConvex(
+                    approx
+                )
+
             ) {
 
                 const points =
@@ -904,24 +1143,67 @@ function detectDocument(src) {
                     );
 
 
-                if (
-                    points &&
-                    validQuadrilateral(
-                        points,
-                        src.cols,
-                        src.rows
-                    ) &&
-                    area > bestArea
-                ) {
+                if (points) {
 
-                    bestArea = area;
+                    const ordered =
+                        orderCorners(
+                            points
+                        );
 
-                    if (bestContour) {
-                        bestContour.delete();
+
+                    const quadArea =
+                        Math.abs(
+
+                            polygonArea(
+                                ordered
+                            )
+
+                        );
+
+
+                    if (
+
+                        quadArea >
+
+                        imageArea *
+                        CONFIG.MIN_DOCUMENT_AREA_RATIO
+
+                    ) {
+
+                        const score =
+                            calculateDocumentScore(
+
+                                ordered,
+
+                                quadArea,
+
+                                imageArea,
+
+                                src.cols,
+
+                                src.rows
+
+                            );
+
+
+                        if (
+
+                            score >
+
+                            bestScore
+
+                        ) {
+
+                            bestScore =
+                                score;
+
+
+                            bestPoints =
+                                ordered;
+
+                        }
+
                     }
-
-                    bestContour =
-                        approx.clone();
 
                 }
 
@@ -929,26 +1211,13 @@ function detectDocument(src) {
 
 
             approx.delete();
+
             contour.delete();
 
         }
 
 
-        if (!bestContour) {
-
-            return null;
-        }
-
-
-        const result =
-            extractPoints(
-                bestContour
-            );
-
-
-        bestContour.delete();
-
-        return result;
+        return bestPoints;
 
 
     } catch (error) {
@@ -958,32 +1227,339 @@ function detectDocument(src) {
             error
         );
 
+
         return null;
 
 
     } finally {
 
         if (gray) gray.delete();
+
         if (blurred) blurred.delete();
+
         if (edges) edges.delete();
+
+        if (threshold) threshold.delete();
+
+        if (combined) combined.delete();
+
         if (contours) contours.delete();
+
         if (hierarchy) hierarchy.delete();
+
+        if (kernel) kernel.delete();
+
     }
 }
 
 
 /* ============================================================
-   EXTRAER PUNTOS
+   CALCULAR PUNTUACIÓN DEL DOCUMENTO
+============================================================ */
+
+function calculateDocumentScore(
+
+    points,
+
+    area,
+
+    imageArea,
+
+    imageWidth,
+
+    imageHeight
+
+) {
+
+    /*
+    Tamaño respecto a la imagen.
+    */
+
+    const areaRatio =
+        area /
+        imageArea;
+
+
+    /*
+    Dimensiones.
+    */
+
+    const topWidth =
+        distance(
+            points[0],
+            points[1]
+        );
+
+
+    const bottomWidth =
+        distance(
+            points[3],
+            points[2]
+        );
+
+
+    const leftHeight =
+        distance(
+            points[0],
+            points[3]
+        );
+
+
+    const rightHeight =
+        distance(
+            points[1],
+            points[2]
+        );
+
+
+    const averageWidth =
+
+        (
+            topWidth +
+            bottomWidth
+        )
+
+        / 2;
+
+
+    const averageHeight =
+
+        (
+            leftHeight +
+            rightHeight
+        )
+
+        / 2;
+
+
+    if (
+
+        averageWidth <= 0 ||
+
+        averageHeight <= 0
+
+    ) {
+
+        return 0;
+
+    }
+
+
+    /*
+    Proporción del documento.
+    */
+
+    let ratio =
+        averageWidth /
+        averageHeight;
+
+
+    if (ratio < 1) {
+
+        ratio =
+            1 / ratio;
+
+    }
+
+
+    /*
+    Carta ≈ 1.294
+    A4 ≈ 1.414
+
+    Utilizamos un valor intermedio.
+    */
+
+    const expectedRatio =
+        1.35;
+
+
+    const ratioDifference =
+        Math.abs(
+
+            ratio -
+
+            expectedRatio
+
+        );
+
+
+    /*
+    Puntuación por tamaño.
+    */
+
+    const sizeScore =
+
+        Math.min(
+
+            areaRatio /
+            0.75,
+
+            1
+
+        );
+
+
+    /*
+    Puntuación por proporción.
+    */
+
+    const ratioScore =
+
+        Math.max(
+
+            0,
+
+            1 -
+
+            ratioDifference /
+            0.8
+
+        );
+
+
+    /*
+    Centro del documento.
+    */
+
+    const centerX =
+
+        (
+
+            points[0].x +
+            points[1].x +
+            points[2].x +
+            points[3].x
+
+        )
+
+        / 4;
+
+
+    const centerY =
+
+        (
+
+            points[0].y +
+            points[1].y +
+            points[2].y +
+            points[3].y
+
+        )
+
+        / 4;
+
+
+    const imageCenterX =
+        imageWidth / 2;
+
+
+    const imageCenterY =
+        imageHeight / 2;
+
+
+    const centerDistance =
+
+        Math.sqrt(
+
+            Math.pow(
+
+                centerX -
+                imageCenterX,
+
+                2
+
+            )
+
+            +
+
+            Math.pow(
+
+                centerY -
+                imageCenterY,
+
+                2
+
+            )
+
+        );
+
+
+    const maxDistance =
+
+        Math.sqrt(
+
+            imageCenterX *
+            imageCenterX
+
+            +
+
+            imageCenterY *
+            imageCenterY
+
+        );
+
+
+    const centerScore =
+
+        1 -
+
+        Math.min(
+
+            centerDistance /
+            maxDistance,
+
+            1
+
+        );
+
+
+    /*
+    PUNTUACIÓN FINAL
+    */
+
+    return (
+
+        sizeScore *
+        0.55
+
+    )
+
+    +
+
+    (
+
+        ratioScore *
+        0.30
+
+    )
+
+    +
+
+    (
+
+        centerScore *
+        0.15
+
+    );
+}
+
+
+/* ============================================================
+   EXTRAER LOS PUNTOS DEL CONTORNO
 ============================================================ */
 
 function extractPoints(mat) {
 
     if (
+
         !mat ||
+
         mat.rows !== 4
+
     ) {
 
         return null;
+
     }
 
 
@@ -991,23 +1567,35 @@ function extractPoints(mat) {
 
 
     for (
+
         let i = 0;
+
         i < 4;
+
         i++
+
     ) {
 
         points.push({
 
-            x: mat.data32S[i * 2],
+            x:
+                mat.data32S[
+                    i * 2
+                ],
 
-            y: mat.data32S[i * 2 + 1]
+            y:
+                mat.data32S[
+                    i * 2 + 1
+                ]
 
         });
 
     }
 
 
-    return orderCorners(points);
+    return orderCorners(
+        points
+    );
 }
 
 
@@ -1018,185 +1606,153 @@ function extractPoints(mat) {
 function orderCorners(points) {
 
     if (
+
         !points ||
+
         points.length !== 4
+
     ) {
 
         return null;
+
     }
 
 
     const sums =
         points.map(
-            p => p.x + p.y
+
+            point =>
+
+                point.x +
+                point.y
+
         );
+
 
     const differences =
         points.map(
-            p => p.x - p.y
+
+            point =>
+
+                point.x -
+                point.y
+
         );
 
 
     const topLeft =
         points[
+
             sums.indexOf(
-                Math.min(...sums)
+
+                Math.min(
+                    ...sums
+                )
+
             )
+
         ];
+
 
     const bottomRight =
         points[
+
             sums.indexOf(
-                Math.max(...sums)
+
+                Math.max(
+                    ...sums
+                )
+
             )
+
         ];
+
 
     const topRight =
         points[
+
             differences.indexOf(
-                Math.max(...differences)
+
+                Math.max(
+                    ...differences
+                )
+
             )
+
         ];
+
 
     const bottomLeft =
         points[
+
             differences.indexOf(
-                Math.min(...differences)
+
+                Math.min(
+                    ...differences
+                )
+
             )
+
         ];
 
 
     return [
+
         topLeft,
+
         topRight,
+
         bottomRight,
+
         bottomLeft
+
     ];
 }
 
 
 /* ============================================================
-   VALIDAR CUADRILÁTERO
-============================================================ */
-
-function validQuadrilateral(
-    points,
-    width,
-    height
-) {
-
-    if (!points) {
-        return false;
-    }
-
-
-    const area =
-        Math.abs(
-            polygonArea(points)
-        );
-
-
-    const imageArea =
-        width * height;
-
-
-    if (
-        area <
-        imageArea *
-        CONFIG.MIN_DOCUMENT_AREA_RATIO
-    ) {
-
-        return false;
-    }
-
-
-    const topWidth =
-        distance(
-            points[0],
-            points[1]
-        );
-
-    const bottomWidth =
-        distance(
-            points[3],
-            points[2]
-        );
-
-    const leftHeight =
-        distance(
-            points[0],
-            points[3]
-        );
-
-    const rightHeight =
-        distance(
-            points[1],
-            points[2]
-        );
-
-
-    const averageWidth =
-        (
-            topWidth +
-            bottomWidth
-        ) / 2;
-
-
-    const averageHeight =
-        (
-            leftHeight +
-            rightHeight
-        ) / 2;
-
-
-    if (
-        averageWidth <= 0 ||
-        averageHeight <= 0
-    ) {
-
-        return false;
-    }
-
-
-    const ratio =
-        averageWidth /
-        averageHeight;
-
-
-    return (
-        ratio >=
-        CONFIG.MIN_ASPECT_RATIO &&
-        ratio <=
-        CONFIG.MAX_ASPECT_RATIO
-    );
-}
-
-
-/* ============================================================
-   ÁREA POLÍGONO
+   ÁREA DEL POLÍGONO
 ============================================================ */
 
 function polygonArea(points) {
 
-    let area = 0;
+    let area =
+        0;
 
 
     for (
+
         let i = 0;
+
         i < points.length;
+
         i++
+
     ) {
 
         const j =
-            (i + 1) %
+
+            (
+
+                i + 1
+
+            )
+
+            %
+
             points.length;
 
 
         area +=
+
             points[i].x *
-            points[j].y -
+            points[j].y
+
+            -
+
             points[j].x *
             points[i].y;
+
     }
 
 
@@ -1205,7 +1761,7 @@ function polygonArea(points) {
 
 
 /* ============================================================
-   DISTANCIA
+   DISTANCIA ENTRE DOS PUNTOS
 ============================================================ */
 
 function distance(a, b) {
@@ -1213,13 +1769,23 @@ function distance(a, b) {
     return Math.sqrt(
 
         Math.pow(
-            b.x - a.x,
+
+            b.x -
+            a.x,
+
             2
-        ) +
+
+        )
+
+        +
 
         Math.pow(
-            b.y - a.y,
+
+            b.y -
+            a.y,
+
             2
+
         )
 
     );
@@ -1227,126 +1793,106 @@ function distance(a, b) {
 
 
 /* ============================================================
-   NORMALIZAR COORDENADAS
+   NORMALIZAR PUNTOS
 ============================================================ */
 
 function normalizeCorners(
+
     corners,
+
     width,
+
     height
+
 ) {
 
     return corners.map(
+
         point => ({
 
-            x: point.x / width,
+            x:
+                point.x /
+                width,
 
-            y: point.y / height
+            y:
+                point.y /
+                height
 
         })
+
     );
 }
 
 
 /* ============================================================
-   COMPARAR DOCUMENTO
+   COMPARAR ESTABILIDAD
 ============================================================ */
 
 function documentIsStable(
+
     current,
+
     previous
+
 ) {
 
     if (
+
         !current ||
+
         !previous
+
     ) {
 
         return false;
+
     }
 
 
     for (
+
         let i = 0;
+
         i < 4;
+
         i++
+
     ) {
 
         const dx =
+
             Math.abs(
+
                 current[i].x -
                 previous[i].x
+
             );
 
+
         const dy =
+
             Math.abs(
+
                 current[i].y -
                 previous[i].y
+
             );
 
 
         if (
+
             dx >
             CONFIG.POSITION_TOLERANCE ||
+
             dy >
             CONFIG.POSITION_TOLERANCE
+
         ) {
 
             return false;
+
         }
 
-    }
-
-
-    const currentWidth =
-        distance(
-            current[0],
-            current[1]
-        );
-
-
-    const previousWidth =
-        distance(
-            previous[0],
-            previous[1]
-        );
-
-
-    const currentHeight =
-        distance(
-            current[0],
-            current[3]
-        );
-
-
-    const previousHeight =
-        distance(
-            previous[0],
-            previous[3]
-        );
-
-
-    if (
-        Math.abs(
-            currentWidth -
-            previousWidth
-        ) >
-        CONFIG.SIZE_TOLERANCE
-    ) {
-
-        return false;
-    }
-
-
-    if (
-        Math.abs(
-            currentHeight -
-            previousHeight
-        ) >
-        CONFIG.SIZE_TOLERANCE
-    ) {
-
-        return false;
     }
 
 
@@ -1355,82 +1901,133 @@ function documentIsStable(
 
 
 /* ============================================================
-   ESTABILIDAD
+   CONTROLAR ESTABILIDAD
 ============================================================ */
 
-function handleDocumentStability(
-    corners
-) {
+function handleDocumentStability(corners) {
 
-    updateDetectionUI(true);
+    updateDetectionUI(
+        true
+    );
 
 
     if (
+
         state.autoCaptureLocked
+
     ) {
 
         return;
+
     }
 
 
+    /*
+    Primera detección.
+    */
+
     if (
+
         !state.previousDocument
+
     ) {
 
         state.previousDocument =
             corners;
 
+
         state.stableSince =
-            performance.now();
+            null;
+
+
+        updateStability(
+            0
+        );
+
 
         return;
+
     }
 
 
+    /*
+    Comparar posición actual con anterior.
+    */
+
     const stable =
+
         documentIsStable(
+
             corners,
+
             state.previousDocument
+
         );
 
+
+    /*
+    Si se movió, reiniciar.
+    */
 
     if (!stable) {
 
         state.previousDocument =
             corners;
 
+
         state.stableSince =
-            performance.now();
+            null;
+
 
         updateStability(
             0
         );
 
+
         return;
+
     }
 
 
-    const now =
-        performance.now();
+    /*
+    IMPORTANTE:
 
+    El contador empieza únicamente
+    cuando ya detectamos que el documento
+    permanece estable.
+    */
 
-    if (!state.stableSince) {
+    if (
+
+        state.stableSince === null
+
+    ) {
 
         state.stableSince =
-            now;
+            performance.now();
+
     }
 
 
     const elapsed =
-        now -
+
+        performance.now()
+
+        -
+
         state.stableSince;
 
 
     const progress =
+
         Math.min(
-            1,
+
             elapsed /
-            CONFIG.STABILITY_TIME
+
+            CONFIG.STABILITY_TIME,
+
+            1
+
         );
 
 
@@ -1439,12 +2036,19 @@ function handleDocumentStability(
     );
 
 
+    /*
+    Después de 3 segundos.
+    */
+
     if (
+
         progress >= 1
+
     ) {
 
         state.autoCaptureLocked =
             true;
+
 
         captureDocument(
             corners
@@ -1459,28 +2063,31 @@ function handleDocumentStability(
 
 
 /* ============================================================
-   ACTUALIZAR ESTABILIDAD
+   ACTUALIZAR INDICADOR DE ESTABILIDAD
 ============================================================ */
 
-function updateStability(
-    progress
-) {
+function updateStability(progress) {
 
     state.stabilityProgress =
         progress;
 
 
     const percentage =
+
         Math.round(
+
             progress * 100
+
         );
 
 
     stabilityBar.style.width =
+
         `${percentage}%`;
 
 
     stabilityPercent.textContent =
+
         `${percentage}%`;
 
 
@@ -1489,13 +2096,21 @@ function updateStability(
 
 
     progressCircle.style.strokeDashoffset =
-        circumference -
-        circumference * progress;
+
+        circumference
+
+        -
+
+        circumference *
+        progress;
 
 
     if (
+
         progress > 0 &&
+
         progress < 1
+
     ) {
 
         stabilityIndicator
@@ -1503,29 +2118,61 @@ function updateStability(
             .remove("hidden");
 
 
-        countdownNumber.textContent =
+        const remainingSeconds =
+
             Math.max(
+
                 1,
+
                 Math.ceil(
+
                     (
-                        1 -
-                        progress
-                    ) * 3
+
+                        CONFIG.STABILITY_TIME
+
+                        -
+
+                        (
+                            progress *
+                            CONFIG.STABILITY_TIME
+                        )
+
+                    )
+
+                    / 1000
+
                 )
+
             );
 
 
+        countdownNumber.textContent =
+
+            remainingSeconds;
+
+
         cameraStatus.className =
+
             "status-pill stable";
 
-        cameraStatus.innerHTML =
-            `<span class="status-dot"></span>
-             Documento estable`;
 
-    } else if (progress >= 1) {
+        cameraStatus.innerHTML =
+
+            `
+            <span class="status-dot"></span>
+            Documento estable
+            `;
+
+
+    } else if (
+
+        progress >= 1
+
+    ) {
 
         countdownNumber.textContent =
             "✓";
+
 
     } else {
 
@@ -1546,33 +2193,42 @@ function resetStability() {
     state.previousDocument =
         null;
 
+
     state.stableSince =
         null;
+
 
     state.stabilityProgress =
         0;
 
+
     state.autoCaptureLocked =
         false;
 
-    updateStability(0);
+
+    updateStability(
+        0
+    );
+
 
     cameraStatus.className =
         "status-pill waiting";
 
+
     cameraStatus.innerHTML =
-        `<span class="status-dot"></span>
-         Buscando documento`;
+
+        `
+        <span class="status-dot"></span>
+        Buscando documento
+        `;
 }
 
 
 /* ============================================================
-   UI DETECCIÓN
+   INTERFAZ DE DETECCIÓN
 ============================================================ */
 
-function updateDetectionUI(
-    detected
-) {
+function updateDetectionUI(detected) {
 
     if (detected) {
 
@@ -1580,25 +2236,43 @@ function updateDetectionUI(
             .classList
             .add("detected");
 
+
         cameraMessage
             .classList
             .add("hidden");
 
+
         detectionIcon.textContent =
             "✓";
+
 
         detectionTitle.textContent =
             "Documento detectado";
 
+
         detectionDescription.textContent =
-            "Mantén la cámara quieta para capturarlo automáticamente.";
+            "Mantén la cámara quieta durante 3 segundos.";
 
-        cameraStatus.className =
-            "status-pill detected";
 
-        cameraStatus.innerHTML =
-            `<span class="status-dot"></span>
-             Documento detectado`;
+        if (
+
+            state.stabilityProgress === 0
+
+        ) {
+
+            cameraStatus.className =
+                "status-pill detected";
+
+
+            cameraStatus.innerHTML =
+
+                `
+                <span class="status-dot"></span>
+                Documento detectado
+                `;
+
+        }
+
 
     } else {
 
@@ -1606,115 +2280,145 @@ function updateDetectionUI(
             .classList
             .remove("detected");
 
+
         cameraMessage
             .classList
             .remove("hidden");
 
+
         detectionIcon.textContent =
             "○";
+
 
         detectionTitle.textContent =
             "Esperando documento";
 
+
         detectionDescription.textContent =
-            "La cámara analizará automáticamente los bordes.";
+            "Coloca la hoja dentro del área visible.";
+
 
         cameraStatus.className =
             "status-pill waiting";
 
+
         cameraStatus.innerHTML =
-            `<span class="status-dot"></span>
-             Buscando documento`;
+
+            `
+            <span class="status-dot"></span>
+            Buscando documento
+            `;
+
     }
 }
 
 
 /* ============================================================
-   DIBUJAR DETECCIÓN
+   DIBUJAR LÍNEAS VERDES
 ============================================================ */
 
-function drawDetection(
-    corners,
-    width,
-    height
-) {
-
-    const canvas =
-        overlayCanvas;
+function drawDetection(corners) {
 
     const rect =
         video.getBoundingClientRect();
 
 
-    const scaleX =
-        rect.width /
-        width;
-
-    const scaleY =
-        rect.height /
-        height;
+    overlayCanvas.width =
+        Math.round(
+            rect.width
+        );
 
 
-    canvas.width =
-        rect.width;
-
-    canvas.height =
-        rect.height;
+    overlayCanvas.height =
+        Math.round(
+            rect.height
+        );
 
 
     const ctx =
-        canvas.getContext("2d");
+        overlayCanvas.getContext(
+            "2d"
+        );
 
 
     ctx.clearRect(
+
         0,
+
         0,
-        canvas.width,
-        canvas.height
+
+        overlayCanvas.width,
+
+        overlayCanvas.height
+
     );
 
 
     if (!corners) {
 
         return;
+
     }
 
+
+    const points =
+
+        corners.map(
+
+            point => ({
+
+                x:
+
+                    point.x *
+
+                    overlayCanvas.width,
+
+                y:
+
+                    point.y *
+
+                    overlayCanvas.height
+
+            })
+
+        );
+
+
+    /*
+    Línea verde.
+    */
 
     ctx.beginPath();
 
 
-    corners.forEach(
-        (point, index) => {
+    ctx.moveTo(
 
-            const x =
-                point.x *
-                width *
-                scaleX;
+        points[0].x,
 
-            const y =
-                point.y *
-                height *
-                scaleY;
+        points[0].y
 
-
-            if (index === 0) {
-
-                ctx.moveTo(
-                    x,
-                    y
-                );
-
-            } else {
-
-                ctx.lineTo(
-                    x,
-                    y
-                );
-
-            }
-
-        }
     );
+
+
+    for (
+
+        let i = 1;
+
+        i < points.length;
+
+        i++
+
+    ) {
+
+        ctx.lineTo(
+
+            points[i].x,
+
+            points[i].y
+
+        );
+
+    }
 
 
     ctx.closePath();
@@ -1723,51 +2427,83 @@ function drawDetection(
     ctx.strokeStyle =
         "#22c55e";
 
+
     ctx.lineWidth =
-        3;
+        4;
+
 
     ctx.shadowColor =
-        "rgba(34,197,94,.5)";
+        "rgba(34,197,94,.8)";
+
 
     ctx.shadowBlur =
-        8;
+        10;
+
 
     ctx.stroke();
 
 
-    ctx.shadowBlur = 0;
+    ctx.shadowBlur =
+        0;
 
 
-    corners.forEach(
-        point => {
+    /*
+    Dibujar puntos.
+    */
 
-            const x =
-                point.x *
-                width *
-                scaleX;
+    points.forEach(point => {
 
-            const y =
-                point.y *
-                height *
-                scaleY;
+        ctx.beginPath();
 
 
-            ctx.beginPath();
+        ctx.arc(
 
-            ctx.arc(
-                x,
-                y,
-                5,
-                0,
-                Math.PI * 2
-            );
+            point.x,
 
-            ctx.fillStyle =
-                "#22c55e";
+            point.y,
 
-            ctx.fill();
+            6,
 
-        }
+            0,
+
+            Math.PI * 2
+
+        );
+
+
+        ctx.fillStyle =
+            "#22c55e";
+
+
+        ctx.fill();
+
+    });
+
+}
+
+
+/* ============================================================
+   LIMPIAR DETECCIÓN
+============================================================ */
+
+function clearDetection() {
+
+    const ctx =
+        overlayCanvas.getContext(
+            "2d"
+        );
+
+
+    ctx.clearRect(
+
+        0,
+
+        0,
+
+        overlayCanvas.width,
+
+        overlayCanvas.height
+
     );
 }
 
@@ -1779,23 +2515,32 @@ function drawDetection(
 function manualCapture() {
 
     if (
+
         state.processing
+
     ) {
 
         return;
+
     }
 
 
     if (
+
         !state.detectedDocument
+
     ) {
 
         showToast(
-            "Primero coloca un documento frente a la cámara.",
+
+            "No se detectó correctamente el documento.",
+
             "!"
+
         );
 
         return;
+
     }
 
 
@@ -1813,15 +2558,16 @@ function manualCapture() {
    CAPTURAR DOCUMENTO
 ============================================================ */
 
-async function captureDocument(
-    corners
-) {
+async function captureDocument(corners) {
 
     if (
+
         state.processing
+
     ) {
 
         return;
+
     }
 
 
@@ -1832,64 +2578,97 @@ async function captureDocument(
     try {
 
         showLoading(
-            "Capturando documento..."
+            "Procesando documento..."
         );
 
 
         playCaptureFlash();
 
 
+        /*
+        Capturar video completo.
+        */
+
         const sourceCanvas =
             createVideoCanvas();
 
 
+        /*
+        Convertir esquinas normalizadas
+        a coordenadas reales.
+        */
+
         const absoluteCorners =
+
             corners.map(
+
                 point => ({
 
                     x:
+
                         point.x *
+
                         sourceCanvas.width,
 
                     y:
+
                         point.y *
+
                         sourceCanvas.height
 
                 })
+
             );
 
 
-        const scanCanvas =
+        /*
+        Corregir perspectiva.
+        */
+
+        const correctedCanvas =
             perspectiveTransform(
+
                 sourceCanvas,
+
                 absoluteCorners
+
             );
 
+
+        /*
+        Guardar original corregido.
+        */
 
         state.currentRawCanvas =
             sourceCanvas;
 
-        state.currentScanCanvas =
-            scanCanvas;
 
         state.currentOriginalCanvas =
-            scanCanvas;
+            correctedCanvas;
 
+
+        /*
+        Crear versión gris.
+        */
 
         state.currentGrayCanvas =
             applyGrayFilter(
-                scanCanvas
+
+                correctedCanvas
+
             );
 
 
-        const enhancedCanvas =
-            applyScannerFilter(
-                scanCanvas
-            );
-
+        /*
+        Crear versión escáner.
+        */
 
         state.currentScanCanvas =
-            enhancedCanvas;
+            applyScannerFilter(
+
+                correctedCanvas
+
+            );
 
 
         state.selectedFilter =
@@ -1897,7 +2676,9 @@ async function captureDocument(
 
 
         showResult(
-            enhancedCanvas
+
+            state.currentScanCanvas
+
         );
 
 
@@ -1908,19 +2689,27 @@ async function captureDocument(
 
         console.error(error);
 
+
         hideLoading();
 
+
         showToast(
+
             "No se pudo procesar el documento.",
+
             "!"
+
         );
 
+
         resetStability();
+
 
     } finally {
 
         state.processing =
             false;
+
     }
 }
 
@@ -1934,6 +2723,7 @@ function createVideoCanvas() {
     const width =
         video.videoWidth;
 
+
     const height =
         video.videoHeight;
 
@@ -1941,54 +2731,88 @@ function createVideoCanvas() {
     let targetWidth =
         width;
 
+
     let targetHeight =
         height;
 
 
     if (
+
         width >
+
         CONFIG.MAX_PROCESSING_WIDTH
+
     ) {
 
         const scale =
+
             CONFIG.MAX_PROCESSING_WIDTH /
+
             width;
 
+
         targetWidth =
+
             Math.round(
-                width * scale
+
+                width *
+                scale
+
             );
 
+
         targetHeight =
+
             Math.round(
-                height * scale
+
+                height *
+                scale
+
             );
+
     }
 
 
     const canvas =
-        document.createElement("canvas");
+        document.createElement(
+            "canvas"
+        );
 
 
     canvas.width =
         targetWidth;
+
 
     canvas.height =
         targetHeight;
 
 
     const ctx =
-        canvas.getContext("2d", {
-            willReadFrequently: true
-        });
+        canvas.getContext(
+
+            "2d",
+
+            {
+
+                willReadFrequently: true
+
+            }
+
+        );
 
 
     ctx.drawImage(
+
         video,
+
         0,
+
         0,
+
         targetWidth,
+
         targetHeight
+
     );
 
 
@@ -2001,83 +2825,115 @@ function createVideoCanvas() {
 ============================================================ */
 
 function perspectiveTransform(
+
     sourceCanvas,
+
     points
+
 ) {
 
     const ordered =
-        orderCorners(points);
+        orderCorners(
+            points
+        );
 
+
+    /*
+    Calcular ancho.
+    */
 
     const topWidth =
         distance(
+
             ordered[0],
+
             ordered[1]
+
         );
+
 
     const bottomWidth =
         distance(
+
             ordered[3],
+
             ordered[2]
+
         );
+
+
+    const documentWidth =
+        Math.max(
+
+            topWidth,
+
+            bottomWidth
+
+        );
+
+
+    /*
+    Calcular alto.
+    */
 
     const leftHeight =
         distance(
+
             ordered[0],
+
             ordered[3]
+
         );
+
 
     const rightHeight =
         distance(
+
             ordered[1],
+
             ordered[2]
+
         );
 
+
+    const documentHeight =
+        Math.max(
+
+            leftHeight,
+
+            rightHeight
+
+        );
+
+
+    /*
+    Tamaño final basado exactamente
+    en el documento detectado.
+    */
 
     let width =
-        Math.max(
-            topWidth,
-            bottomWidth
+        Math.round(
+            documentWidth
         );
+
 
     let height =
-        Math.max(
-            leftHeight,
-            rightHeight
+        Math.round(
+            documentHeight
         );
-
-
-    if (
-        width > height * 1.4
-    ) {
-
-        // Documento horizontal.
-        width =
-            Math.max(
-                topWidth,
-                bottomWidth
-            );
-
-        height =
-            Math.max(
-                leftHeight,
-                rightHeight
-            );
-
-    }
 
 
     width =
         Math.max(
-            600,
-            Math.round(width)
+            width,
+            300
         );
 
 
     height =
         Math.max(
-            800,
-            Math.round(height)
+            height,
+            300
         );
 
 
@@ -2093,91 +2949,138 @@ function perspectiveTransform(
 
     const srcPoints =
         cv.matFromArray(
+
             4,
+
             1,
+
             cv.CV_32FC2,
+
             [
 
                 ordered[0].x,
+
                 ordered[0].y,
 
+
                 ordered[1].x,
+
                 ordered[1].y,
 
+
                 ordered[2].x,
+
                 ordered[2].y,
 
+
                 ordered[3].x,
+
                 ordered[3].y
 
             ]
+
         );
 
 
     const dstPoints =
         cv.matFromArray(
+
             4,
+
             1,
+
             cv.CV_32FC2,
+
             [
 
                 0,
-                0,
-
-                width,
-                0,
-
-                width,
-                height,
 
                 0,
-                height
+
+
+                width - 1,
+
+                0,
+
+
+                width - 1,
+
+                height - 1,
+
+
+                0,
+
+                height - 1
 
             ]
+
         );
 
 
     const matrix =
         cv.getPerspectiveTransform(
+
             srcPoints,
+
             dstPoints
+
         );
 
 
     cv.warpPerspective(
+
         src,
+
         dst,
+
         matrix,
+
         new cv.Size(
+
             width,
+
             height
+
         ),
-        cv.INTER_LINEAR,
-        cv.BORDER_CONSTANT,
-        new cv.Scalar(
-            255,
-            255,
-            255,
-            255
-        )
+
+        cv.INTER_CUBIC,
+
+        cv.BORDER_REPLICATE
+
     );
 
 
     const result =
-        document.createElement("canvas");
+        document.createElement(
+            "canvas"
+        );
+
+
+    result.width =
+        width;
+
+
+    result.height =
+        height;
 
 
     cv.imshow(
+
         result,
+
         dst
+
     );
 
 
     src.delete();
+
     dst.delete();
 
     srcPoints.delete();
+
     dstPoints.delete();
+
     matrix.delete();
 
 
@@ -2189,37 +3092,54 @@ function perspectiveTransform(
    FILTRO GRIS
 ============================================================ */
 
-function applyGrayFilter(
-    sourceCanvas
-) {
+function applyGrayFilter(sourceCanvas) {
 
     const src =
         cv.imread(
             sourceCanvas
         );
 
+
     const gray =
         new cv.Mat();
 
 
     cv.cvtColor(
+
         src,
+
         gray,
+
         cv.COLOR_RGBA2GRAY
+
     );
 
 
     const result =
-        document.createElement("canvas");
+        document.createElement(
+            "canvas"
+        );
+
+
+    result.width =
+        gray.cols;
+
+
+    result.height =
+        gray.rows;
 
 
     cv.imshow(
+
         result,
+
         gray
+
     );
 
 
     src.delete();
+
     gray.delete();
 
 
@@ -2228,12 +3148,10 @@ function applyGrayFilter(
 
 
 /* ============================================================
-   FILTRO ESCÁNER
+   FILTRO TIPO ESCÁNER
 ============================================================ */
 
-function applyScannerFilter(
-    sourceCanvas
-) {
+function applyScannerFilter(sourceCanvas) {
 
     const src =
         cv.imread(
@@ -2245,89 +3163,151 @@ function applyScannerFilter(
         new cv.Mat();
 
 
+    const background =
+        new cv.Mat();
+
+
     const normalized =
         new cv.Mat();
 
 
-    const threshold =
+    const binary =
         new cv.Mat();
 
 
-    const denoised =
-        new cv.Mat();
+    /*
+    Convertir a gris.
+    */
 
-
-    // Convertir a escala de grises.
     cv.cvtColor(
+
         src,
+
         gray,
+
         cv.COLOR_RGBA2GRAY
-    );
 
-
-    // Suavizado ligero para reducir ruido.
-    cv.GaussianBlur(
-        gray,
-        denoised,
-        new cv.Size(3, 3),
-        0
     );
 
 
     /*
-        Adaptive threshold permite que una hoja
-        con iluminación no completamente uniforme
-        quede mucho más blanca.
+    Detectar iluminación del fondo.
+
+    Esto ayuda a eliminar sombras.
+    */
+
+    cv.GaussianBlur(
+
+        gray,
+
+        background,
+
+        new cv.Size(
+
+            0,
+
+            0
+
+        ),
+
+        25
+
+    );
+
+
+    /*
+    Normalizar iluminación.
+
+    Hoja más blanca.
+    */
+
+    cv.divide(
+
+        gray,
+
+        background,
+
+        normalized,
+
+        255
+
+    );
+
+
+    /*
+    Mejorar contraste.
+    */
+
+    cv.normalize(
+
+        normalized,
+
+        normalized,
+
+        0,
+
+        255,
+
+        cv.NORM_MINMAX
+
+    );
+
+
+    /*
+    Crear efecto tipo escáner.
     */
 
     cv.adaptiveThreshold(
-        denoised,
-        threshold,
-        255,
-        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv.THRESH_BINARY,
-        31,
-        12
-    );
 
-
-    /*
-        Pequeña operación morfológica para
-        limpiar ruido.
-    */
-
-    const kernel =
-        cv.Mat.ones(
-            2,
-            2,
-            cv.CV_8U
-        );
-
-
-    cv.morphologyEx(
-        threshold,
         normalized,
-        cv.MORPH_OPEN,
-        kernel
+
+        binary,
+
+        255,
+
+        cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+
+        cv.THRESH_BINARY,
+
+        41,
+
+        9
+
     );
 
 
     const result =
-        document.createElement("canvas");
+        document.createElement(
+            "canvas"
+        );
+
+
+    result.width =
+        binary.cols;
+
+
+    result.height =
+        binary.rows;
 
 
     cv.imshow(
+
         result,
-        normalized
+
+        binary
+
     );
 
 
     src.delete();
+
     gray.delete();
-    denoised.delete();
-    threshold.delete();
+
+    background.delete();
+
     normalized.delete();
-    kernel.delete();
+
+    binary.delete();
 
 
     return result;
@@ -2338,14 +3318,16 @@ function applyScannerFilter(
    MOSTRAR RESULTADO
 ============================================================ */
 
-function showResult(
-    canvas
-) {
+function showResult(canvas) {
 
     previewImage.src =
+
         canvas.toDataURL(
+
             "image/jpeg",
+
             CONFIG.JPEG_QUALITY
+
         );
 
 
@@ -2364,33 +3346,24 @@ function showResult(
         .remove("hidden");
 
 
-    document
-        .querySelectorAll(".filter-button")
-        .forEach(button => {
-
-            button.classList.toggle(
-                "active",
-                button.dataset.filter ===
-                state.selectedFilter
-            );
-
-        });
+    updateFilterButtons();
 }
 
 
 /* ============================================================
-   SELECCIONAR FILTRO
+   CAMBIAR FILTRO
 ============================================================ */
 
-function selectFilter(
-    filter
-) {
+function selectFilter(filter) {
 
     if (
+
         !state.currentOriginalCanvas
+
     ) {
 
         return;
+
     }
 
 
@@ -2425,35 +3398,93 @@ function selectFilter(
 
             canvas =
                 applyScannerFilter(
+
                     state.currentOriginalCanvas
+
                 );
 
+            state.currentScanCanvas =
+                canvas;
+
             break;
+
     }
 
 
-    state.currentScanCanvas =
-        canvas;
-
-
     previewImage.src =
+
         canvas.toDataURL(
+
             "image/jpeg",
+
             CONFIG.JPEG_QUALITY
+
         );
 
 
+    updateFilterButtons();
+}
+
+
+/* ============================================================
+   ACTUALIZAR BOTONES DE FILTRO
+============================================================ */
+
+function updateFilterButtons() {
+
     document
-        .querySelectorAll(".filter-button")
+        .querySelectorAll(
+            ".filter-button"
+        )
+
         .forEach(button => {
 
             button.classList.toggle(
+
                 "active",
+
                 button.dataset.filter ===
-                filter
+                state.selectedFilter
+
             );
 
         });
+}
+
+
+/* ============================================================
+   OBTENER CANVAS DEL FILTRO ACTUAL
+============================================================ */
+
+function getCurrentCanvas() {
+
+    switch (
+        state.selectedFilter
+    ) {
+
+        case "original":
+
+            return (
+                state.currentOriginalCanvas
+            );
+
+
+        case "gray":
+
+            return (
+                state.currentGrayCanvas
+            );
+
+
+        case "scan":
+
+        default:
+
+            return (
+                state.currentScanCanvas
+            );
+
+    }
 }
 
 
@@ -2463,38 +3494,54 @@ function selectFilter(
 
 function saveCurrentPage() {
 
-    if (
-        !state.currentScanCanvas
-    ) {
+    const currentCanvas =
+        getCurrentCanvas();
+
+
+    if (!currentCanvas) {
 
         return;
+
     }
 
 
     const dataUrl =
-        state.currentScanCanvas
-            .toDataURL(
-                "image/jpeg",
-                CONFIG.JPEG_QUALITY
-            );
+
+        currentCanvas.toDataURL(
+
+            "image/jpeg",
+
+            CONFIG.JPEG_QUALITY
+
+        );
 
 
     state.pages.push({
 
         id:
-            Date.now(),
+
+            Date.now()
+
+            +
+
+            Math.random(),
+
 
         image:
             dataUrl,
 
+
         width:
-            state.currentScanCanvas.width,
+            currentCanvas.width,
+
 
         height:
-            state.currentScanCanvas.height,
+            currentCanvas.height,
+
 
         filter:
             state.selectedFilter,
+
 
         created:
             new Date()
@@ -2506,8 +3553,11 @@ function saveCurrentPage() {
 
 
     showToast(
+
         `Página ${state.pages.length} guardada`,
+
         "✓"
+
     );
 
 
@@ -2516,7 +3566,7 @@ function saveCurrentPage() {
 
 
 /* ============================================================
-   VOLVER A TOMAR
+   VOLVER A TOMAR FOTO
 ============================================================ */
 
 function retakeDocument() {
@@ -2531,25 +3581,46 @@ function retakeDocument() {
         .remove("hidden");
 
 
+    clearCurrentDocument();
+
+
+    resetStability();
+
+
+    showToast(
+
+        "Listo para volver a escanear",
+
+        "✓"
+
+    );
+}
+
+
+/* ============================================================
+   LIMPIAR DOCUMENTO ACTUAL
+============================================================ */
+
+function clearCurrentDocument() {
+
     state.currentRawCanvas =
         null;
 
-    state.currentScanCanvas =
-        null;
-
-    state.currentGrayCanvas =
-        null;
 
     state.currentOriginalCanvas =
         null;
 
 
-    resetStability();
+    state.currentGrayCanvas =
+        null;
 
-    showToast(
-        "Listo para volver a escanear",
-        "✓"
-    );
+
+    state.currentScanCanvas =
+        null;
+
+
+    state.selectedFilter =
+        "scan";
 }
 
 
@@ -2574,7 +3645,11 @@ function addAnotherPage() {
         .remove("hidden");
 
 
+    clearCurrentDocument();
+
+
     resetStability();
+
 
     state.autoCaptureLocked =
         false;
@@ -2582,7 +3657,7 @@ function addAnotherPage() {
 
 
 /* ============================================================
-   GALERÍA
+   MOSTRAR GALERÍA
 ============================================================ */
 
 function showGallery() {
@@ -2591,17 +3666,49 @@ function showGallery() {
         .classList
         .add("hidden");
 
+
     resultSection
         .classList
         .add("hidden");
+
 
     gallerySection
         .classList
         .remove("hidden");
 
+
     updateGallery();
 }
 
+
+/* ============================================================
+   MOSTRAR CÁMARA
+============================================================ */
+
+function showCamera() {
+
+    gallerySection
+        .classList
+        .add("hidden");
+
+
+    resultSection
+        .classList
+        .add("hidden");
+
+
+    cameraSection
+        .classList
+        .remove("hidden");
+
+
+    resetStability();
+}
+
+
+/* ============================================================
+   ACTUALIZAR GALERÍA
+============================================================ */
 
 function updateGallery() {
 
@@ -2614,18 +3721,23 @@ function updateGallery() {
 
 
     if (
+
         state.pages.length === 0
+
     ) {
 
         emptyGallery
             .classList
             .remove("hidden");
 
+
         pdfActions
             .classList
             .add("hidden");
 
+
         return;
+
     }
 
 
@@ -2640,22 +3752,31 @@ function updateGallery() {
 
 
     summaryPages.textContent =
+
         state.pages.length === 1
+
             ? "1 página"
+
             : `${state.pages.length} páginas`;
 
 
     state.pages.forEach(
+
         (page, index) => {
 
             const card =
-                document.createElement("div");
+                document.createElement(
+                    "div"
+                );
+
 
             card.className =
                 "page-card";
 
 
-            card.innerHTML = `
+            card.innerHTML =
+
+                `
 
                 <div class="page-image-container">
 
@@ -2666,17 +3787,23 @@ function updateGallery() {
 
                 </div>
 
+
                 <span class="page-number">
+
                     Página ${index + 1}
+
                 </span>
+
 
                 <button
                     class="delete-page"
-                    data-id="${page.id}"
                     title="Eliminar página"
                 >
+
                     ×
+
                 </button>
+
 
                 <div class="page-card-footer">
 
@@ -2685,25 +3812,39 @@ function updateGallery() {
                     </span>
 
                     <span>
-                        ${page.filter === "scan"
-                            ? "Escáner"
-                            : page.filter === "gray"
-                                ? "Gris"
-                                : "Original"}
+
+                        ${
+
+                            page.filter === "scan"
+
+                                ? "Escáner"
+
+                                : page.filter === "gray"
+
+                                    ? "Gris"
+
+                                    : "Original"
+
+                        }
+
                     </span>
 
                 </div>
-            `;
+
+                `;
 
 
             const deleteButton =
+
                 card.querySelector(
                     ".delete-page"
                 );
 
 
             deleteButton.addEventListener(
+
                 "click",
+
                 () => {
 
                     deletePage(
@@ -2711,6 +3852,7 @@ function updateGallery() {
                     );
 
                 }
+
             );
 
 
@@ -2719,6 +3861,7 @@ function updateGallery() {
             );
 
         }
+
     );
 }
 
@@ -2727,14 +3870,16 @@ function updateGallery() {
    ELIMINAR PÁGINA
 ============================================================ */
 
-function deletePage(
-    id
-) {
+function deletePage(id) {
 
     state.pages =
+
         state.pages.filter(
+
             page =>
+
                 page.id !== id
+
         );
 
 
@@ -2742,31 +3887,12 @@ function deletePage(
 
 
     showToast(
+
         "Página eliminada",
+
         "✓"
+
     );
-}
-
-
-/* ============================================================
-   VOLVER A CÁMARA
-============================================================ */
-
-function showCamera() {
-
-    gallerySection
-        .classList
-        .add("hidden");
-
-    resultSection
-        .classList
-        .add("hidden");
-
-    cameraSection
-        .classList
-        .remove("hidden");
-
-    resetStability();
 }
 
 
@@ -2777,15 +3903,21 @@ function showCamera() {
 async function generatePDF() {
 
     if (
+
         state.pages.length === 0
+
     ) {
 
         showToast(
+
             "No hay páginas para generar el PDF.",
+
             "!"
+
         );
 
         return;
+
     }
 
 
@@ -2802,130 +3934,294 @@ async function generatePDF() {
             window.jspdf;
 
 
-        const firstPage =
-            state.pages[0];
-
-
-        const firstImage =
-            await loadImage(
-                firstPage.image
-            );
-
-
-        const orientation =
-            firstImage.width >
-            firstImage.height
-                ? "landscape"
-                : "portrait";
-
+        /*
+        Crear PDF inicialmente A4 vertical.
+        */
 
         const pdf =
             new jsPDF({
 
-                orientation,
+                orientation:
+                    "portrait",
 
-                unit: "mm",
+                unit:
+                    "mm",
 
-                format: "a4"
+                format:
+                    "a4",
+
+                compress:
+                    true
 
             });
 
 
         for (
+
             let i = 0;
+
             i < state.pages.length;
+
             i++
+
         ) {
 
-            if (i > 0) {
+            const image =
 
-                const image =
-                    await loadImage(
-                        state.pages[i].image
+                await loadImage(
+
+                    state.pages[i].image
+
+                );
+
+
+            /*
+            Determinar orientación.
+            */
+
+            const orientation =
+
+                image.width >
+
+                image.height
+
+                    ? "landscape"
+
+                    : "portrait";
+
+
+            /*
+            Primera página.
+            */
+
+            if (i === 0) {
+
+                /*
+                Si la primera página es horizontal,
+                cambiamos la página inicial.
+                */
+
+                if (
+
+                    orientation ===
+                    "landscape"
+
+                ) {
+
+                    pdf.deletePage(
+                        1
                     );
 
 
-                const pageOrientation =
-                    image.width >
-                    image.height
-                        ? "landscape"
-                        : "portrait";
+                    pdf.addPage(
 
+                        "a4",
+
+                        "landscape"
+
+                    );
+
+                }
+
+            } else {
 
                 /*
-                    jsPDF permite trabajar con una
-                    página estándar. Para mantener
-                    consistencia utilizaremos A4.
+                Crear una nueva página
+                respetando orientación.
                 */
 
                 pdf.addPage(
+
                     "a4",
-                    pageOrientation
+
+                    orientation
+
                 );
+
             }
 
 
-            const image =
-                await loadImage(
-                    state.pages[i].image
-                );
-
+            /*
+            Dimensiones reales del PDF.
+            */
 
             const pageWidth =
-                pdf.internal.pageSize.getWidth();
+
+                pdf.internal
+                    .pageSize
+                    .getWidth();
 
 
             const pageHeight =
-                pdf.internal.pageSize.getHeight();
 
+                pdf.internal
+                    .pageSize
+                    .getHeight();
+
+
+            /*
+            Margen extremadamente pequeño.
+
+            Esto permite que el documento
+            ocupe casi toda la hoja PDF.
+            */
 
             const margin =
-                8;
+                2;
 
 
-            const maxWidth =
+            const availableWidth =
+
                 pageWidth -
-                margin * 2;
 
-
-            const maxHeight =
-                pageHeight -
-                margin * 2;
-
-
-            const ratio =
-                Math.min(
-                    maxWidth /
-                    image.width,
-
-                    maxHeight /
-                    image.height
+                (
+                    margin * 2
                 );
 
 
-            const width =
-                image.width *
-                ratio;
+            const availableHeight =
 
+                pageHeight -
 
-            const height =
-                image.height *
-                ratio;
-
-
-            const x =
                 (
-                    pageWidth -
-                    width
-                ) / 2;
+                    margin * 2
+                );
 
 
-            const y =
-                (
-                    pageHeight -
-                    height
-                ) / 2;
+            /*
+            Proporción de la imagen.
+            */
 
+            const imageRatio =
+
+                image.width /
+
+                image.height;
+
+
+            /*
+            Proporción del PDF.
+            */
+
+            const pageRatio =
+
+                availableWidth /
+
+                availableHeight;
+
+
+            let drawWidth;
+            let drawHeight;
+            let x;
+            let y;
+
+
+            /*
+            =====================================================
+            AJUSTE TIPO COVER
+            =====================================================
+
+            La imagen llena la página.
+
+            Ya no se verá pequeña.
+
+            Si hay una pequeña diferencia de
+            proporción, solamente sobresaldrá
+            ligeramente y jsPDF mostrará
+            únicamente el área correspondiente
+            a la hoja.
+            */
+
+            if (
+
+                imageRatio >
+
+                pageRatio
+
+            ) {
+
+                /*
+                Imagen más ancha.
+                */
+
+                drawHeight =
+                    availableHeight;
+
+
+                drawWidth =
+
+                    image.width *
+
+                    (
+
+                        drawHeight /
+
+                        image.height
+
+                    );
+
+
+                x =
+
+                    (
+
+                        pageWidth -
+
+                        drawWidth
+
+                    )
+
+                    / 2;
+
+
+                y =
+                    margin;
+
+            } else {
+
+                /*
+                Imagen más alta.
+                */
+
+                drawWidth =
+                    availableWidth;
+
+
+                drawHeight =
+
+                    image.height *
+
+                    (
+
+                        drawWidth /
+
+                        image.width
+
+                    );
+
+
+                x =
+                    margin;
+
+
+                y =
+
+                    (
+
+                        pageHeight -
+
+                        drawHeight
+
+                    )
+
+                    / 2;
+
+            }
+
+
+            /*
+            Agregar la imagen.
+            */
 
             pdf.addImage(
 
@@ -2934,10 +4230,12 @@ async function generatePDF() {
                 "JPEG",
 
                 x,
+
                 y,
 
-                width,
-                height,
+                drawWidth,
+
+                drawHeight,
 
                 undefined,
 
@@ -2948,13 +4246,28 @@ async function generatePDF() {
         }
 
 
+        /*
+        Nombre del archivo.
+        */
+
         const date =
             new Date();
 
 
         const fileName =
-            `documento_${formatDate(date)}.pdf`;
 
+            `documento_${
+
+                formatDate(
+                    date
+                )
+
+            }.pdf`;
+
+
+        /*
+        Guardar PDF.
+        */
 
         pdf.save(
             fileName
@@ -2965,21 +4278,32 @@ async function generatePDF() {
 
 
         showToast(
+
             "PDF generado correctamente",
+
             "✓"
+
         );
 
 
     } catch (error) {
 
-        console.error(error);
+        console.error(
+            error
+        );
+
 
         hideLoading();
 
+
         showToast(
+
             "No se pudo generar el PDF.",
+
             "!"
+
         );
+
     }
 }
 
@@ -2988,11 +4312,10 @@ async function generatePDF() {
    CARGAR IMAGEN
 ============================================================ */
 
-function loadImage(
-    src
-) {
+function loadImage(src) {
 
     return new Promise(
+
         (resolve, reject) => {
 
             const image =
@@ -3000,7 +4323,10 @@ function loadImage(
 
 
             image.onload =
-                () => resolve(image);
+                () => resolve(
+                    image
+                );
+
 
             image.onerror =
                 reject;
@@ -3010,71 +4336,94 @@ function loadImage(
                 src;
 
         }
+
     );
 }
 
 
 /* ============================================================
-   FECHA
+   FORMATEAR FECHA
 ============================================================ */
 
-function formatDate(
-    date
-) {
+function formatDate(date) {
 
     const year =
         date.getFullYear();
 
 
     const month =
+
         String(
+
             date.getMonth() + 1
-        ).padStart(
+
+        )
+
+        .padStart(
             2,
             "0"
         );
 
 
     const day =
+
         String(
+
             date.getDate()
-        ).padStart(
+
+        )
+
+        .padStart(
             2,
             "0"
         );
 
 
     const hour =
+
         String(
+
             date.getHours()
-        ).padStart(
+
+        )
+
+        .padStart(
             2,
             "0"
         );
 
 
     const minute =
+
         String(
+
             date.getMinutes()
-        ).padStart(
+
+        )
+
+        .padStart(
             2,
             "0"
         );
 
 
-    return `${year}-${month}-${day}_${hour}-${minute}`;
+    return
+
+        `${year}-${month}-${day}_${hour}-${minute}`;
 }
 
 
 /* ============================================================
-   FLASH
+   FLASH DE CAPTURA
 ============================================================ */
 
 function playCaptureFlash() {
 
     captureFlash
         .classList
-        .remove("active");
+        .remove(
+            "active"
+        );
 
 
     void captureFlash.offsetWidth;
@@ -3082,32 +4431,41 @@ function playCaptureFlash() {
 
     captureFlash
         .classList
-        .add("active");
+        .add(
+            "active"
+        );
 }
 
 
 /* ============================================================
-   LOADING
+   MOSTRAR LOADING
 ============================================================ */
 
-function showLoading(
-    message
-) {
+function showLoading(message) {
 
     loadingText.textContent =
         message;
 
+
     loadingOverlay
         .classList
-        .remove("hidden");
+        .remove(
+            "hidden"
+        );
 }
 
+
+/* ============================================================
+   OCULTAR LOADING
+============================================================ */
 
 function hideLoading() {
 
     loadingOverlay
         .classList
-        .add("hidden");
+        .add(
+            "hidden"
+        );
 }
 
 
@@ -3119,8 +4477,11 @@ let toastTimeout;
 
 
 function showToast(
+
     message,
+
     icon = "✓"
+
 ) {
 
     clearTimeout(
@@ -3132,26 +4493,37 @@ function showToast(
         message;
 
 
-    document.getElementById(
-        "toastIcon"
-    ).textContent =
-        icon;
+    document
+        .getElementById(
+            "toastIcon"
+        )
+
+        .textContent =
+            icon;
 
 
     toast
         .classList
-        .add("show");
+        .add(
+            "show"
+        );
 
 
     toastTimeout =
+
         setTimeout(
+
             () => {
 
                 toast
                     .classList
-                    .remove("show");
+                    .remove(
+                        "show"
+                    );
 
             },
+
             2500
+
         );
 }
