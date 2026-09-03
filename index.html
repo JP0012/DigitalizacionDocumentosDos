@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    >
+
+    <title>DocuScan</title>
+
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- OpenCV -->
+    <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+
+    <!-- jsPDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+
+<body>
+
+    <div class="app">
+
+        <!-- =========================
+             HEADER
+        ========================== -->
+
+        <header class="topbar">
+
+            <div class="brand">
+
+                <div class="brand-icon">
+                    <span>▣</span>
+                </div>
+
+                <div>
+                    <h1>DocuScan</h1>
+                    <p>Digitalización inteligente</p>
+                </div>
+
+            </div>
+
+            <div class="top-actions">
+
+                <button
+                    id="btnGallery"
+                    class="icon-button"
+                    title="Páginas escaneadas"
+                >
+                    <span>▤</span>
+                    <b id="pageCount">0</b>
+                </button>
+
+            </div>
+
+        </header>
+
+
+        <!-- =========================
+             CONTENIDO PRINCIPAL
+        ========================== -->
+
+        <main class="main-content">
+
+            <!-- =========================
+                 ÁREA DE CÁMARA
+            ========================== -->
+
+            <section id="cameraSection" class="scanner-section">
+
+                <div class="scanner-header">
+
+                    <div>
+                        <span class="section-label">ESCÁNER</span>
+                        <h2>Coloca el documento dentro del marco</h2>
+                    </div>
+
+                    <div
+                        id="cameraStatus"
+                        class="status-pill waiting"
+                    >
+                        <span class="status-dot"></span>
+                        Buscando documento
+                    </div>
+
+                </div>
+
+
+                <!-- Cámara -->
+
+                <div class="camera-container">
+
+                    <video
+                        id="video"
+                        autoplay
+                        playsinline
+                        muted
+                    ></video>
+
+                    <canvas
+                        id="overlayCanvas"
+                    ></canvas>
+
+
+                    <!-- Marco visual -->
+
+                    <div
+                        id="scannerFrame"
+                        class="scanner-frame"
+                    >
+
+                        <div class="corner top-left"></div>
+                        <div class="corner top-right"></div>
+                        <div class="corner bottom-left"></div>
+                        <div class="corner bottom-right"></div>
+
+                    </div>
+
+
+                    <!-- Mensaje central -->
+
+                    <div
+                        id="cameraMessage"
+                        class="camera-message"
+                    >
+                        <div class="camera-message-icon">
+                            <span>▣</span>
+                        </div>
+
+                        <strong>
+                            Busca los bordes del documento
+                        </strong>
+
+                        <small>
+                            Coloca la hoja sobre una superficie visible
+                        </small>
+                    </div>
+
+
+                    <!-- Contador de estabilidad -->
+
+                    <div
+                        id="stabilityIndicator"
+                        class="stability-indicator hidden"
+                    >
+
+                        <div class="stability-circle">
+
+                            <svg viewBox="0 0 100 100">
+
+                                <circle
+                                    class="progress-background"
+                                    cx="50"
+                                    cy="50"
+                                    r="44"
+                                ></circle>
+
+                                <circle
+                                    id="progressCircle"
+                                    class="progress"
+                                    cx="50"
+                                    cy="50"
+                                    r="44"
+                                ></circle>
+
+                            </svg>
+
+                            <span id="countdownNumber">
+                                3
+                            </span>
+
+                        </div>
+
+                        <div class="stability-text">
+                            Documento estable
+                        </div>
+
+                    </div>
+
+
+                    <!-- Flash de captura -->
+
+                    <div
+                        id="captureFlash"
+                        class="capture-flash"
+                    ></div>
+
+                </div>
+
+
+                <!-- Información -->
+
+                <div class="camera-info">
+
+                    <div class="detection-info">
+
+                        <span
+                            id="detectionIcon"
+                            class="info-icon"
+                        >
+                            ○
+                        </span>
+
+                        <div>
+
+                            <strong id="detectionTitle">
+                                Esperando documento
+                            </strong>
+
+                            <span id="detectionDescription">
+                                La cámara analizará automáticamente los bordes.
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="stability-bar-container">
+
+                        <div class="stability-bar">
+
+                            <div
+                                id="stabilityBar"
+                                class="stability-bar-progress"
+                            ></div>
+
+                        </div>
+
+                        <span id="stabilityPercent">
+                            0%
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <!-- Controles -->
+
+                <div class="camera-controls">
+
+                    <button
+                        id="btnGalleryBottom"
+                        class="secondary-button"
+                    >
+                        <span>▤</span>
+                        Páginas
+                    </button>
+
+
+                    <button
+                        id="btnCapture"
+                        class="capture-button"
+                        title="Capturar manualmente"
+                    >
+
+                        <span class="capture-inner"></span>
+
+                    </button>
+
+
+                    <button
+                        id="btnCameraSwitch"
+                        class="secondary-button"
+                    >
+                        <span>↻</span>
+                        Cambiar cámara
+                    </button>
+
+                </div>
+
+            </section>
+
+
+            <!-- =========================
+                 RESULTADO
+            ========================== -->
+
+            <section
+                id="resultSection"
+                class="result-section hidden"
+            >
+
+                <div class="result-header">
+
+                    <div>
+
+                        <span class="section-label">
+                            VISTA PREVIA
+                        </span>
+
+                        <h2>
+                            Documento capturado
+                        </h2>
+
+                    </div>
+
+                    <button
+                        id="btnCloseResult"
+                        class="close-button"
+                    >
+                        ×
+                    </button>
+
+                </div>
+
+
+                <div class="preview-container">
+
+                    <div class="preview-image-wrapper">
+
+                        <img
+                            id="previewImage"
+                            alt="Documento escaneado"
+                        >
+
+                    </div>
+
+                </div>
+
+
+                <!-- Filtros -->
+
+                <div class="filter-section">
+
+                    <span class="filter-title">
+                        Mejorar documento
+                    </span>
+
+                    <div class="filter-buttons">
+
+                        <button
+                            class="filter-button active"
+                            data-filter="scan"
+                        >
+                            <span>▤</span>
+                            Escáner
+                        </button>
+
+                        <button
+                            class="filter-button"
+                            data-filter="gray"
+                        >
+                            <span>◐</span>
+                            Gris
+                        </button>
+
+                        <button
+                            class="filter-button"
+                            data-filter="original"
+                        >
+                            <span>◉</span>
+                            Original
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <!-- Acciones -->
+
+                <div class="result-actions">
+
+                    <button
+                        id="btnRetake"
+                        class="secondary-large-button"
+                    >
+                        <span>↶</span>
+                        Volver a tomar
+                    </button>
+
+                    <button
+                        id="btnAddPage"
+                        class="secondary-large-button"
+                    >
+                        <span>＋</span>
+                        Agregar página
+                    </button>
+
+                    <button
+                        id="btnSavePage"
+                        class="primary-large-button"
+                    >
+                        <span>✓</span>
+                        Guardar página
+                    </button>
+
+                </div>
+
+            </section>
+
+
+            <!-- =========================
+                 GALERÍA
+            ========================== -->
+
+            <section
+                id="gallerySection"
+                class="gallery-section hidden"
+            >
+
+                <div class="gallery-header">
+
+                    <div>
+
+                        <span class="section-label">
+                            DOCUMENTO
+                        </span>
+
+                        <h2>
+                            Páginas escaneadas
+                        </h2>
+
+                    </div>
+
+                    <button
+                        id="btnCloseGallery"
+                        class="close-button"
+                    >
+                        ×
+                    </button>
+
+                </div>
+
+
+                <div
+                    id="emptyGallery"
+                    class="empty-gallery"
+                >
+
+                    <div class="empty-icon">
+                        ▤
+                    </div>
+
+                    <h3>
+                        Aún no hay páginas
+                    </h3>
+
+                    <p>
+                        Las páginas que captures aparecerán aquí.
+                    </p>
+
+                </div>
+
+
+                <div
+                    id="pagesGrid"
+                    class="pages-grid"
+                ></div>
+
+
+                <div
+                    id="pdfActions"
+                    class="pdf-actions hidden"
+                >
+
+                    <div class="document-summary">
+
+                        <span class="summary-icon">
+                            PDF
+                        </span>
+
+                        <div>
+
+                            <strong>
+                                Documento listo
+                            </strong>
+
+                            <span id="summaryPages">
+                                0 páginas
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <button
+                        id="btnGeneratePDF"
+                        class="primary-large-button"
+                    >
+                        <span>↓</span>
+                        Generar PDF
+                    </button>
+
+                </div>
+
+            </section>
+
+        </main>
+
+
+        <!-- =========================
+             TOAST
+        ========================== -->
+
+        <div
+            id="toast"
+            class="toast"
+        >
+
+            <span id="toastIcon">✓</span>
+
+            <span id="toastMessage">
+                Listo
+            </span>
+
+        </div>
+
+
+        <!-- =========================
+             LOADING
+        ========================== -->
+
+        <div
+            id="loadingOverlay"
+            class="loading-overlay hidden"
+        >
+
+            <div class="loading-card">
+
+                <div class="spinner"></div>
+
+                <strong id="loadingText">
+                    Procesando documento...
+                </strong>
+
+                <span>
+                    Esto puede tardar unos segundos
+                </span>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- =========================
+         APP JS
+    ========================== -->
+
+    <script src="app.js"></script>
+
+</body>
+</html>
